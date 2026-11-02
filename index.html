@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Color Ball Catch</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0f172a;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.92);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        .btn-act:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body class="w-screen h-screen flex justify-center items-center relative bg-slate-950 text-white">
+
+    <!-- Haupt-Container (Simuliert Mobilgerät auf Desktop oder nutzt volle mobile Ansicht) -->
+    <div id="game-container" class="relative w-full h-full max-w-md max-h-[900px] flex flex-col overflow-hidden shadow-2xl rounded-none sm:rounded-3xl border-0 sm:border border-slate-700/60 bg-slate-900">
+        
+        <!-- Canvas Spielfläche -->
+        <canvas id="gameCanvas" class="w-full h-full flex-1 cursor-pointer"></canvas>
+
+        <!-- HUD (Oberer Statusbereich) -->
+        <div id="hud" class="absolute top-0 left-0 right-0 p-3 flex flex-col gap-2 pointer-events-none transition-opacity duration-300 opacity-0 z-10">
+            <!-- Stat-Zeile: Level, Punkte, Herzen, Pause -->
+            <div class="flex justify-between items-center bg-slate-900/90 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-slate-700/60 shadow-lg text-xs sm:text-sm">
+                <div class="flex items-center space-x-3">
+                    <span id="hud-level" class="font-extrabold text-amber-400">Level 1</span>
+                    <span id="hud-score" class="font-bold text-emerald-400">Score: 0</span>
+                </div>
+                <div class="flex items-center space-x-3 pointer-events-auto">
+                    <div id="hud-lives" class="flex text-red-500 font-bold text-base tracking-wider">❤️❤️❤️</div>
+                    <button id="btn-pause" class="bg-slate-800 hover:bg-slate-700 active:scale-90 text-slate-200 p-1.5 rounded-xl border border-slate-600/80 transition">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Ziel-Anzeige für die geforderten Farbbälle -->
+            <div id="targets-bar" class="flex justify-around items-center bg-slate-900/90 backdrop-blur-md px-2 py-1.5 rounded-xl border border-slate-700/60 shadow-md text-xs font-semibold">
+                <!-- Dynamisch erzeugt -->
+            </div>
+        </div>
+
+        <!-- Rotes Blitz-Overlay bei Lebensverlust -->
+        <div id="damage-flash" class="absolute inset-0 bg-red-600/35 pointer-events-none opacity-0 transition-opacity duration-100 z-20"></div>
+
+        <!-- Touch-Steuerungs-Buttons entfernt da direkt auf Bälle getippt wird -->
+
+        <!-- Start-Bildschirm Overlay -->
+        <div id="overlay-start" class="absolute inset-0 glass-panel flex flex-col justify-center items-center text-center p-6 z-30">
+            <div class="w-20 h-20 mb-4 rounded-3xl bg-gradient-to-tr from-pink-500 via-purple-500 to-indigo-500 flex justify-center items-center shadow-xl shadow-indigo-500/20 animate-bounce">
+                <span class="text-4xl">🎨</span>
+            </div>
+            <h1 class="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-purple-300 to-indigo-400 mb-2">Color Ball Catch</h1>
+            <p class="text-slate-300 text-xs sm:text-sm max-w-xs mb-5 leading-relaxed">Tippe auf die geforderten Bälle auf dem Bildschirm, um sie zu fangen! Weiche Bomben aus und verpasse keine benötigten Farben.</p>
+            
+            <button id="btn-start" class="btn-act bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-extrabold text-base px-8 py-3.5 rounded-2xl shadow-xl shadow-teal-500/30 border border-emerald-400/30 mb-4 transition w-56">
+                Spiel Starten
+            </button>
+
+            <div class="flex flex-wrap justify-center gap-2 text-xs">
+                <button id="btn-rules" class="bg-slate-800/90 hover:bg-slate-700 text-amber-400 font-semibold px-3 py-1.5 rounded-xl border border-slate-700/80 transition">📜 Regeln</button>
+                <button id="btn-highscores" class="bg-slate-800/90 hover:bg-slate-700 text-emerald-400 font-semibold px-3 py-1.5 rounded-xl border border-slate-700/80 transition">🏆 Highscores</button>
+                <button id="btn-imprint" class="bg-slate-800/90 hover:bg-slate-700 text-slate-300 font-semibold px-3 py-1.5 rounded-xl border border-slate-700/80 transition">ℹ️ Impressum</button>
+                <button id="btn-privacy" class="bg-slate-800/90 hover:bg-slate-700 text-slate-400 font-semibold px-3 py-1.5 rounded-xl border border-slate-700/80 transition">🔒 Datenschutz</button>
+            </div>
+        </div>
+
+        <!-- Spielregeln Modal -->
+        <div id="modal-rules" class="absolute inset-0 glass-panel flex flex-col justify-between p-6 z-40 hidden text-left text-xs sm:text-sm overflow-y-auto">
+            <div>
+                <h2 class="text-xl font-bold text-amber-400 mb-3 border-b border-slate-700 pb-2">📜 Spielregeln & Anleitung</h2>
+                
+                <h3 class="font-bold text-emerald-400 mt-3 mb-1">Spielziel:</h3>
+                <p class="text-slate-300 mb-3 leading-relaxed">Tippe mit dem Finger oder der Maus direkt auf die herunterfallenden Bälle, um die oben angezeigte Zielanzahl jeder Farbe zu fangen.</p>
+
+                <h3 class="font-bold text-red-400 mb-1">Wann verlierst du ein Leben (❤️)?</h3>
+                <ul class="list-disc list-inside text-slate-300 space-y-1 mb-3">
+                    <li><strong class="text-white">Ball verpasst:</strong> Wenn ein noch benötigter Farbball den Boden berührt (-1 ❤️).</li>
+                    <li><strong class="text-white">Bombe angetippt:</strong> Wenn du eine schwarze Bombe (💣) antippst (-1 ❤️).</li>
+                </ul>
+
+                <h3 class="font-bold text-indigo-400 mb-1">Ball-Typen & Flugbahnen:</h3>
+                <ul class="list-disc list-inside text-slate-300 space-y-1 mb-3">
+                    <li><span class="text-white font-semibold">Gerader Fall:</span> Standard-Geschwindigkeit.</li>
+                    <li><span class="text-yellow-400 font-semibold">Meteor (Schnell):</span> Saust schnell nach unten.</li>
+                    <li><span class="text-blue-300 font-semibold">Schwebend (Langsam):</span> Fällt sanft herab.</li>
+                    <li><span class="text-purple-400 font-semibold">Zickzack & Bogen:</span> Geschwungene Flugbahnen.</li>
+                    <li><span class="text-emerald-300 font-semibold">Regenbogen-Joker (★):</span> Zählt für eine gesuchte Farbe!</li>
+                    <li><span class="text-pink-400 font-semibold">Herz-Ball (❤️):</span> Schenkt dir +1 Extra-Leben! Beliebig viele sammelbar.</li>
+                </ul>
+            </div>
+            <button id="btn-close-rules" class="mt-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 rounded-xl text-center w-full shadow-lg transition">Schließen</button>
+        </div>
+
+        <!-- Highscore Modal -->
+        <div id="modal-highscores" class="absolute inset-0 glass-panel flex flex-col justify-between p-6 z-40 hidden text-left text-xs sm:text-sm overflow-y-auto">
+            <div>
+                <h2 class="text-xl font-bold text-emerald-400 mb-3 border-b border-slate-700 pb-2">🏆 Bestenliste (Top 10)</h2>
+                <div id="highscore-list" class="space-y-1.5 text-slate-200">
+                    <!-- Dynamisch befüllt -->
+                </div>
+            </div>
+            <button id="btn-close-highscores" class="mt-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-xl text-center w-full shadow-lg transition">Schließen</button>
+        </div>
+
+        <!-- Datenschutz Modal -->
+        <div id="modal-privacy" class="absolute inset-0 glass-panel flex flex-col justify-between p-6 z-40 hidden text-left text-xs sm:text-sm overflow-y-auto">
+            <div>
+                <h2 class="text-xl font-bold text-slate-200 mb-3 border-b border-slate-700 pb-2">🔒 Datenschutzhinweise</h2>
+                <div class="text-slate-300 space-y-2 leading-relaxed text-xs">
+                    <p class="font-semibold text-white">1. Speicherung von Spielständen</p>
+                    <p>Diese Website speichert deinen persönlichen Highscore sowie deinen eingegebenen Spielernamen lokal im Speicher deines Browsers (<code class="text-amber-300">localStorage</code>). Es werden keine personenbezogenen Daten an externe Server übertragen.</p>
+                    
+                    <p class="font-semibold text-white mt-2">2. Keine Cookies & kein Tracking</p>
+                    <p>Dieses Spiel verwendet keinerlei Analyse-Tools, Tracking-Dienste oder Werbe-Cookies.</p>
+
+                    <p class="font-semibold text-white mt-2">3. Verantwortlich</p>
+                    <p>Blankenhagen Spieleentwicklung<br>Jörg Blankenhagen<br>Kanalstraße 31, 73614 Schorndorf<br>E-Mail: spieleentwicklung@freenet.de</p>
+                </div>
+            </div>
+            <button id="btn-close-privacy" class="mt-4 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2.5 rounded-xl text-center w-full transition">Schließen</button>
+        </div>
+
+        <!-- Impressum Modal -->
+        <div id="modal-imprint" class="absolute inset-0 glass-panel flex flex-col justify-between p-6 z-40 hidden text-left text-xs sm:text-sm overflow-y-auto">
+            <div>
+                <h2 class="text-xl font-bold text-slate-200 mb-3 border-b border-slate-700 pb-2">ℹ️ Impressum</h2>
+                <div class="text-slate-300 space-y-2 leading-relaxed">
+                    <p class="font-bold text-white text-base">Blankenhagen Spieleentwicklung</p>
+                    <p>Inhaber: Jörg Blankenhagen</p>
+                    <p>Kanalstraße 31<br>73614 Schorndorf</p>
+                    <p>Telefon: 07181 74142</p>
+                    <p>E-Mail: <a href="mailto:spieleentwicklung@freenet.de" class="text-sky-400 underline">spieleentwicklung@freenet.de</a></p>
+                    
+                    <hr class="border-slate-700 my-3">
+                    
+                    <p class="font-semibold text-slate-400">Urheberrecht & Haftungshinweis:</p>
+                    <p class="text-[11px] text-slate-400">
+                        Die durch den Seitenbetreiber erstellten Inhalte und Werke auf diesen Seiten unterliegen dem deutschen Urheberrecht. Die Vervielfältigung, Bearbeitung, Verbreitung und jede Art der Verwertung außerhalb der Grenzen des Urheberrechtes bedürfen der schriftlichen Zustimmung des jeweiligen Autors bzw. Erstellers.
+                    </p>
+                    <p class="text-[10px] text-slate-500 mt-3 italic">
+                        Dieser Text/Dieses Bild/Dieses Video/… wurde unter Zuhilfenahme einer Künstlichen Intelligenz erstellt und von einem Menschen überprüft.
+                    </p>
+                </div>
+            </div>
+            <button id="btn-close-imprint" class="mt-4 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2.5 rounded-xl text-center w-full transition">Schließen</button>
+        </div>
+
+        <!-- Pause Overlay -->
+        <div id="overlay-pause" class="absolute inset-0 glass-panel flex flex-col justify-center items-center text-center p-6 z-30 hidden">
+            <h2 class="text-3xl font-bold text-white mb-6">Pause</h2>
+            <button id="btn-resume" class="btn-act bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-lg px-8 py-3 rounded-2xl shadow-lg mb-3 w-48 transition">
+                Weiter
+            </button>
+            <button id="btn-rules-pause" class="btn-act bg-slate-800 hover:bg-slate-700 text-amber-400 font-semibold px-6 py-2.5 rounded-2xl border border-slate-600 mb-3 w-48 transition">
+                Spielregeln
+            </button>
+            <button id="btn-restart-pause" class="btn-act bg-slate-700 hover:bg-slate-600 text-white font-semibold text-md px-6 py-2.5 rounded-2xl border border-slate-500 w-48 transition">
+                Neustart
+            </button>
+        </div>
+
+        <!-- Level geschafft Overlay -->
+        <div id="overlay-level-complete" class="absolute inset-0 glass-panel flex flex-col justify-center items-center text-center p-6 z-30 hidden">
+            <div class="text-5xl mb-2 animate-bounce">🎉</div>
+            <h2 class="text-3xl font-extrabold text-amber-400 mb-1">Level geschafft!</h2>
+            <p id="level-complete-desc" class="text-slate-300 text-sm mb-6">Sehr gut! Bereit für die nächste Runde?</p>
+            <button id="btn-next-level" class="btn-act bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white font-bold text-lg px-8 py-3.5 rounded-2xl shadow-xl shadow-purple-500/30">
+                Nächstes Level ►
+            </button>
+        </div>
+
+        <!-- Game Over Overlay -->
+        <div id="overlay-game-over" class="absolute inset-0 glass-panel flex flex-col justify-center items-center text-center p-6 z-30 hidden">
+            <div class="text-5xl mb-2">💥</div>
+            <h2 class="text-3xl font-extrabold text-red-500 mb-1">Game Over</h2>
+            <p id="final-score" class="text-slate-200 text-lg mb-1">Dein Score: 0</p>
+            
+            <!-- Namenseingabe Formular -->
+            <div id="name-input-container" class="w-full max-w-xs my-3 hidden">
+                <p class="text-xs text-emerald-400 font-semibold mb-1">🎉 Neues Highscore-Ergebnis!</p>
+                <input type="text" id="player-name-input" maxlength="12" placeholder="Dein Name" class="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-xl text-white text-center font-bold focus:outline-none focus:border-emerald-400">
+                <button id="btn-save-score" class="mt-2 w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2 rounded-xl text-sm transition">Score Speichern</button>
+            </div>
+
+            <p id="high-score" class="text-amber-400 text-sm font-semibold mb-4">Highscore: 0</p>
+            <button id="btn-restart" class="btn-act bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-lg px-8 py-3.5 rounded-2xl shadow-xl shadow-teal-500/30">
+                Erneut Spielen
+            </button>
+        </div>
+
+    </div>
+
+    <!-- Game Engine & Script Block -->
+    <script>
+        // --- Web Audio API Synthesizer ---
+        class SoundEngine {
+            playLifeUp() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(587.33, now); // D5
+                osc.frequency.setValueAtTime(880, now + 0.1); // A5
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.25);
+            }
+            playCatch() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(880, this.ctx.currentTime + 0.08);
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.08);
+            }
+            playRainbow() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(523.25, now);
+                osc.frequency.setValueAtTime(659.25, now + 0.07);
+                osc.frequency.setValueAtTime(783.99, now + 0.14);
+                osc.frequency.setValueAtTime(1046.50, now + 0.21);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.3);
+            }
+            playBomb() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(180, now);
+                osc.frequency.exponentialRampToValueAtTime(40, now + 0.3);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.3);
+            }
+            playMiss() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(260, now);
+                osc.frequency.setValueAtTime(130, now + 0.1);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.25);
+            }
+            playLevelUp() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                [440, 554.37, 659.25, 880].forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.07);
+                    gain.gain.setValueAtTime(0.2, now + idx * 0.07);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.07 + 0.18);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.07);
+                    osc.stop(now + idx * 0.07 + 0.18);
+                });
+            }
+        }
+
+        const sound = new SoundEngine();
+
+        // Farbmodelle
+        const COLOR_PALETTE = [
+            { name: 'Rot', hex: '#ef4444', border: '#991b1b' },
+            { name: 'Blau', hex: '#3b82f6', border: '#1e40af' },
+            { name: 'Grün', hex: '#22c55e', border: '#166534' },
+            { name: 'Gelb', hex: '#eab308', border: '#854d0e' },
+            { name: 'Lila', hex: '#a855f7', border: '#6b21a8' },
+            { name: 'Orange', hex: '#f97316', border: '#9a3412' }
+        ];
+
+        // Spielvariablen
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const hud = document.getElementById('hud');
+        const hudLevel = document.getElementById('hud-level');
+        const hudScore = document.getElementById('hud-score');
+        const hudLives = document.getElementById('hud-lives');
+        const targetsBar = document.getElementById('targets-bar');
+        const touchControls = document.getElementById('touch-controls');
+        const damageFlash = document.getElementById('damage-flash');
+
+        const overlayStart = document.getElementById('overlay-start');
+        const overlayPause = document.getElementById('overlay-pause');
+        const overlayLevelComplete = document.getElementById('overlay-level-complete');
+        const overlayGameOver = document.getElementById('overlay-game-over');
+
+        const modalRules = document.getElementById('modal-rules');
+        const modalImprint = document.getElementById('modal-imprint');
+
+        let width = 0;
+        let height = 0;
+
+        let gameState = 'START'; // START, PLAYING, PAUSED, LEVEL_COMPLETE, GAME_OVER
+        let score = 0;
+        let level = 1;
+        let lives = 3;
+        let highScore = parseInt(localStorage.getItem('color_ball_highscore') || '0');
+
+        let activeColors = [];
+        let levelTargets = {};
+        let balls = [];
+        let particles = [];
+        let floatingTexts = [];
+        let spawnTimer = 0;
+        let spawnInterval = 60;
+        let screenShakeTime = 0;
+
+        // Resizing
+        function resizeCanvas() {
+            const container = document.getElementById('game-container');
+            width = container.clientWidth;
+            height = container.clientHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Audio-Context beim ersten Klick initialisieren
+        function initAudio() {
+            if (!sound.ctx) {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (AudioCtx) sound.ctx = new AudioCtx();
+            }
+            if (sound.ctx && sound.ctx.state === 'suspended') {
+                sound.ctx.resume();
+            }
+        }
+
+        // Event-Listener
+        document.getElementById('btn-start').addEventListener('click', () => { initAudio(); startGame(); });
+        document.getElementById('btn-pause').addEventListener('click', togglePause);
+        document.getElementById('btn-resume').addEventListener('click', togglePause);
+        document.getElementById('btn-restart').addEventListener('click', startGame);
+        document.getElementById('btn-restart-pause').addEventListener('click', startGame);
+        document.getElementById('btn-next-level').addEventListener('click', nextLevel);
+
+        document.getElementById('btn-rules').addEventListener('click', () => modalRules.classList.remove('hidden'));
+        document.getElementById('btn-rules-pause').addEventListener('click', () => modalRules.classList.remove('hidden'));
+        document.getElementById('btn-close-rules').addEventListener('click', () => modalRules.classList.add('hidden'));
+
+        document.getElementById('btn-imprint').addEventListener('click', () => modalImprint.classList.remove('hidden'));
+        document.getElementById('btn-close-imprint').addEventListener('click', () => modalImprint.classList.add('hidden'));
+
+        // Keyboard Controls
+        window.addEventListener('keydown', (e) => {
+            if (gameState === 'PLAYING') {
+                if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') basket.movingLeft = true;
+                if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') basket.movingRight = true;
+                if (e.key === 'p' || e.key === 'P') togglePause();
+            }
+        });
+
+        // Highscore Verwaltung
+        function getHighscores() {
+            return JSON.parse(localStorage.getItem('color_ball_highscores_list') || '[]');
+        }
+
+        function saveHighscore(name, scoreVal) {
+            let scores = getHighscores();
+            scores.push({ name: name || 'Spieler', score: scoreVal, date: new Date().toLocaleDateString('de-DE') });
+            scores.sort((a, b) => b.score - a.score);
+            scores = scores.slice(0, 10);
+            localStorage.setItem('color_ball_highscores_list', JSON.stringify(scores));
+            if (scores.length > 0) {
+                localStorage.setItem('color_ball_highscore', scores[0].score.toString());
+            }
+        }
+
+        function displayHighscores() {
+            const listEl = document.getElementById('highscore-list');
+            const scores = getHighscores();
+            if (scores.length === 0) {
+                listEl.innerHTML = '<p class="text-slate-400 italic text-center py-4">Noch keine Highscores vorhanden.</p>';
+                return;
+            }
+            listEl.innerHTML = scores.map((s, idx) => `
+                <div class="flex justify-between items-center px-3 py-1.5 rounded-lg ${idx === 0 ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300' : 'bg-slate-800/60'}">
+                    <span class="font-bold w-6">${idx + 1}.</span>
+                    <span class="flex-1 font-semibold truncate">${s.name}</span>
+                    <span class="font-extrabold text-emerald-400 mr-2">${s.score}</span>
+                    <span class="text-[10px] text-slate-400">${s.date}</span>
+                </div>
+            `).join('');
+        }
+
+        // Modals Event-Listener
+        const modalPrivacy = document.getElementById('modal-privacy');
+        const modalHighscores = document.getElementById('modal-highscores');
+
+        document.getElementById('btn-privacy').addEventListener('click', () => modalPrivacy.classList.remove('hidden'));
+        document.getElementById('btn-close-privacy').addEventListener('click', () => modalPrivacy.classList.add('hidden'));
+
+        document.getElementById('btn-highscores').addEventListener('click', () => { displayHighscores(); modalHighscores.classList.remove('hidden'); });
+        document.getElementById('btn-close-highscores').addEventListener('click', () => modalHighscores.classList.add('hidden'));
+
+        document.getElementById('btn-save-score').addEventListener('click', () => {
+            const nameInput = document.getElementById('player-name-input');
+            const name = nameInput.value.trim() || 'Spieler';
+            saveHighscore(name, score);
+            document.getElementById('name-input-container').classList.add('hidden');
+            highScore = parseInt(localStorage.getItem('color_ball_highscore') || '0');
+            document.getElementById('high-score').innerText = `Highscore: ${highScore}`;
+            displayHighscores();
+            modalHighscores.classList.remove('hidden');
+        });
+
+        // Touch & Klick-Erkennung direkt auf die Bälle
+        function catchBallAt(clientX, clientY) {
+            if (gameState !== 'PLAYING') return;
+
+            const rect = canvas.getBoundingClientRect();
+            const clickX = clientX - rect.left;
+            const clickY = clientY - rect.top;
+
+            // Bälle von oben nach unten durchsuchen (oberste Bälle zuerst fangen)
+            for (let i = balls.length - 1; i >= 0; i--) {
+                const b = balls[i];
+                // Etwas größerer Treffer-Radius (Toleranz für einfaches Antippen mit dem Finger)
+                const hitRadius = b.radius * 1.8;
+                const dx = clickX - b.x;
+                const dy = clickY - b.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist <= hitRadius) {
+                    if (b.type === 'life') {
+                        sound.playLifeUp();
+                        lives++;
+                        createParticles(b.x, b.y, '#ec4899', 16);
+                        floatingTexts.push({
+                            x: b.x,
+                            y: b.y - 10,
+                            text: '+1 ❤️ Extra-Leben!',
+                            alpha: 1,
+                            vy: -1.2
+                        });
+                        updateHUD();
+                    } else if (b.type === 'bomb') {
+                        sound.playBomb();
+                        createParticles(b.x, b.y, '#ef4444', 18);
+                        lives--;
+                        score = Math.max(0, score - 50);
+                        triggerDamageEffects('-1 ❤️ Bombe erwischt!', b.x, b.y);
+                        updateHUD();
+                        if (lives <= 0) gameOver();
+                    } else if (b.type === 'rainbow') {
+                        sound.playRainbow();
+                        createParticles(b.x, b.y, '#f43f5e', 20);
+                        score += 30;
+
+                        const neededTargets = Object.values(levelTargets).filter(t => t.caught < t.needed);
+                        if (neededTargets.length > 0) {
+                            neededTargets[0].caught++;
+                        }
+                        updateHUD();
+                        checkLevelComplete();
+                    } else {
+                        sound.playCatch();
+                        createParticles(b.x, b.y, b.color.hex, 12);
+                        score += b.type === 'fast' ? 20 : 10;
+
+                        if (levelTargets[b.color.name]) {
+                            levelTargets[b.color.name].caught++;
+                        }
+                        updateHUD();
+                        checkLevelComplete();
+                    }
+
+                    balls.splice(i, 1);
+                    break; // Nur einen Ball pro Tippvorgang fangen
+                }
+            }
+        }
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                catchBallAt(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('mousedown', (e) => {
+            catchBallAt(e.clientX, e.clientY);
+        });
+
+        // --- Spielablauf Logik ---
+        function startGame() {
+            score = 0;
+            level = 1;
+            lives = 3;
+            setupLevel();
+            gameState = 'PLAYING';
+            hideAllOverlays();
+            hud.classList.remove('opacity-0');
+        }
+
+        function setupLevel() {
+            balls = [];
+            particles = [];
+            floatingTexts = [];
+
+            const colorCount = Math.min(2 + Math.floor((level - 1) / 2), COLOR_PALETTE.length);
+            activeColors = COLOR_PALETTE.slice(0, colorCount);
+
+            // Sanfte Steigerung des Ballziels pro Level
+            const baseTarget = Math.min(4 + Math.floor(level * 1.5), 18);
+            levelTargets = {};
+            activeColors.forEach(c => {
+                levelTargets[c.name] = {
+                    color: c,
+                    needed: baseTarget,
+                    caught: 0
+                };
+            });
+
+            // Sanft ansteigende Geschwindigkeit
+            spawnInterval = Math.max(25, 65 - Math.floor(level * 2.5));
+            updateHUD();
+        }
+
+        function nextLevel() {
+            level++;
+            setupLevel();
+            gameState = 'PLAYING';
+            hideAllOverlays();
+        }
+
+        function togglePause() {
+            if (gameState === 'PLAYING') {
+                gameState = 'PAUSED';
+                overlayPause.classList.remove('hidden');
+            } else if (gameState === 'PAUSED') {
+                gameState = 'PLAYING';
+                overlayPause.classList.add('hidden');
+            }
+        }
+
+        function hideAllOverlays() {
+            overlayStart.classList.add('hidden');
+            overlayPause.classList.add('hidden');
+            overlayLevelComplete.classList.add('hidden');
+            overlayGameOver.classList.add('hidden');
+            modalRules.classList.add('hidden');
+            modalImprint.classList.add('hidden');
+        }
+
+        function triggerDamageEffects(msg, x, y) {
+            screenShakeTime = 12;
+            damageFlash.classList.remove('opacity-0');
+            setTimeout(() => damageFlash.classList.add('opacity-0'), 120);
+
+            floatingTexts.push({
+                x: x || width / 2,
+                y: y || height / 2,
+                text: msg,
+                alpha: 1,
+                vy: -1.2
+            });
+        }
+
+        function gameOver() {
+            gameState = 'GAME_OVER';
+            const scores = getHighscores();
+            const isTop10 = scores.length < 10 || score > (scores[scores.length - 1]?.score || 0);
+
+            document.getElementById('final-score').innerText = `Dein Score: ${score}`;
+            document.getElementById('high-score').innerText = `Highscore: ${highScore}`;
+
+            if (score > 0 && isTop10) {
+                document.getElementById('name-input-container').classList.remove('hidden');
+            } else {
+                document.getElementById('name-input-container').classList.add('hidden');
+            }
+
+            overlayGameOver.classList.remove('hidden');
+        }
+
+        function checkLevelComplete() {
+            const allCompleted = Object.values(levelTargets).every(t => t.caught >= t.needed);
+            if (allCompleted) {
+                gameState = 'LEVEL_COMPLETE';
+                sound.playLevelUp();
+                document.getElementById('level-complete-desc').innerText = `Level ${level} gemeistert! Gut gemacht.`;
+                overlayLevelComplete.classList.remove('hidden');
+            }
+        }
+
+        function updateHUD() {
+            hudLevel.innerText = `Level ${level}`;
+            hudScore.innerText = `Score: ${score}`;
+
+            // Herzen-Anzeige (bei vielen Leben kompakt als Text darstellen)
+            if (lives <= 5) {
+                hudLives.innerText = '❤️'.repeat(Math.max(0, lives));
+            } else {
+                hudLives.innerText = `❤️ x${lives}`;
+            }
+
+            targetsBar.innerHTML = '';
+            Object.values(levelTargets).forEach(t => {
+                const item = document.createElement('div');
+                item.className = 'flex items-center space-x-1 px-2 py-0.5 rounded-lg bg-slate-800/80 border border-slate-700/60';
+                
+                const isDone = t.caught >= t.needed;
+                item.innerHTML = `
+                    <span class="w-3 h-3 rounded-full inline-block shadow-sm" style="background-color: ${t.color.hex}"></span>
+                    <span class="${isDone ? 'text-emerald-400 font-bold' : 'text-slate-200'}">${t.caught}/${t.needed}</span>
+                    ${isDone ? '<span class="text-emerald-400 font-bold text-xs ml-0.5">✓</span>' : ''}
+                `;
+                targetsBar.appendChild(item);
+            });
+        }
+
+        // --- Ball Spawns & Bewegung ---
+        function spawnBall() {
+            const radius = 15;
+            const randType = Math.random();
+            let type = 'straight';
+            // Sanfter Geschwindigkeitsanstieg
+            let speed = 1.8 + Math.min(level * 0.2, 3.5);
+            let colorObj = activeColors[Math.floor(Math.random() * activeColors.length)];
+
+            // Ball-Typen basierend auf Level freischalten
+            if (randType < 0.05 + Math.min(level * 0.005, 0.05)) {
+                type = 'life'; // Extra Leben (❤️)
+            } else if (level >= 3 && randType < 0.15) {
+                type = 'bomb';
+            } else if (randType < 0.25) {
+                type = 'rainbow';
+            } else if (level >= 2 && randType < 0.45) {
+                type = 'fast';
+                speed *= 1.5;
+            } else if (randType < 0.60) {
+                type = 'slow';
+                speed *= 0.7;
+            } else if (level >= 3 && randType < 0.80) {
+                type = 'zigzag';
+            } else if (level >= 4) {
+                type = 'curve';
+            }
+
+            let startX = Math.random() * (width - radius * 4) + radius * 2;
+            let curveDir = Math.random() < 0.5 ? 1 : -1;
+
+            balls.push({
+                x: startX,
+                startX: startX,
+                y: -radius,
+                radius: radius,
+                speedY: speed,
+                type: type,
+                color: colorObj,
+                zigzagAngle: Math.random() * Math.PI * 2,
+                curveDir: curveDir,
+                timeAlive: 0
+            });
+        }
+
+        function createParticles(x, y, colorHex, count = 10) {
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 3.5 + 1;
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    radius: Math.random() * 3 + 1.5,
+                    color: colorHex,
+                    alpha: 1,
+                    decay: Math.random() * 0.03 + 0.02
+                });
+            }
+        }
+
+        // --- Update Loop ---
+        function update() {
+            if (gameState !== 'PLAYING') return;
+
+            if (screenShakeTime > 0) screenShakeTime--;
+
+            // Spawn Timer
+            spawnTimer++;
+            if (spawnTimer >= spawnInterval) {
+                spawnBall();
+                spawnTimer = 0;
+            }
+
+            // Bälle aktualisieren
+            for (let i = balls.length - 1; i >= 0; i--) {
+                const b = balls[i];
+                b.timeAlive += 0.04;
+                b.y += b.speedY;
+
+                // Flugbahnen
+                if (b.type === 'zigzag') {
+                    b.zigzagAngle += 0.06;
+                    b.x = b.startX + Math.sin(b.zigzagAngle) * 28;
+                } else if (b.type === 'curve') {
+                    b.x = b.startX + Math.sin(b.timeAlive) * 40 * b.curveDir;
+                }
+
+                // Boden berührt (Ball verpasst)
+                if (b.y - b.radius > height) {
+                    if (b.type !== 'bomb' && b.type !== 'rainbow' && b.type !== 'life') {
+                        const target = levelTargets[b.color.name];
+                        if (target && target.caught < target.needed) {
+                            lives--;
+                            sound.playMiss();
+                            triggerDamageEffects(`-1 ❤️ ${b.color.name} verpasst!`, b.x, height - 35);
+                            updateHUD();
+                            if (lives <= 0) gameOver();
+                        }
+                    }
+                    balls.splice(i, 1);
+                }
+            }
+
+            // Partikel aktualisieren
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.alpha -= p.decay;
+                if (p.alpha <= 0) particles.splice(i, 1);
+            }
+
+            // Schwebe-Texte
+            for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                const ft = floatingTexts[i];
+                ft.y += ft.vy;
+                ft.alpha -= 0.02;
+                if (ft.alpha <= 0) floatingTexts.splice(i, 1);
+            }
+        }
+
+        // --- Render Loop ---
+        function render() {
+            ctx.save();
+            ctx.clearRect(0, 0, width, height);
+
+            // Screen Shake
+            if (screenShakeTime > 0) {
+                const dx = (Math.random() - 0.5) * 8;
+                const dy = (Math.random() - 0.5) * 8;
+                ctx.translate(dx, dy);
+            }
+
+            // Hintergrund
+            const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
+            bgGrad.addColorStop(0, '#0f172a');
+            bgGrad.addColorStop(1, '#1e293b');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, width, height);
+
+            // Bälle zeichnen
+            balls.forEach(b => {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+
+                if (b.type === 'life') {
+                    // Shiny Herz-Ball (Extra Leben)
+                    ctx.fillStyle = '#ec4899';
+                    ctx.shadowColor = '#f43f5e';
+                    ctx.shadowBlur = 12;
+                    ctx.fill();
+
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = '11px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('❤️', b.x, b.y);
+                } else if (b.type === 'bomb') {
+                    ctx.fillStyle = '#1e293b';
+                    ctx.shadowColor = '#000000';
+                    ctx.shadowBlur = 8;
+                    ctx.fill();
+                    
+                    ctx.font = '14px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('💣', b.x, b.y);
+                } else if (b.type === 'rainbow') {
+                    const rainbowGrad = ctx.createConicGradient(0, b.x, b.y);
+                    rainbowGrad.addColorStop(0, '#ef4444');
+                    rainbowGrad.addColorStop(0.25, '#eab308');
+                    rainbowGrad.addColorStop(0.5, '#22c55e');
+                    rainbowGrad.addColorStop(0.75, '#3b82f6');
+                    rainbowGrad.addColorStop(1, '#a855f7');
+                    
+                    ctx.fillStyle = rainbowGrad;
+                    ctx.shadowColor = '#ffffff';
+                    ctx.shadowBlur = 10;
+                    ctx.fill();
+
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = '10px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('★', b.x, b.y);
+                } else {
+                    const grad = ctx.createRadialGradient(
+                        b.x - b.radius * 0.3,
+                        b.y - b.radius * 0.3,
+                        b.radius * 0.1,
+                        b.x,
+                        b.y,
+                        b.radius
+                    );
+                    grad.addColorStop(0, '#ffffff');
+                    grad.addColorStop(0.4, b.color.hex);
+                    grad.addColorStop(1, b.color.border);
+
+                    ctx.fillStyle = grad;
+                    ctx.shadowColor = b.color.hex;
+                    ctx.shadowBlur = b.type === 'fast' ? 12 : 5;
+                    ctx.fill();
+
+                    if (b.type === 'fast') {
+                        ctx.strokeStyle = '#fde047';
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.moveTo(b.x, b.y - b.radius);
+                        ctx.lineTo(b.x, b.y - b.radius - 10);
+                        ctx.stroke();
+                    }
+                }
+                ctx.restore();
+            });
+
+            // Partikel zeichnen
+            particles.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, p.alpha);
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+
+            // Schadensanzeigen
+            floatingTexts.forEach(ft => {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, ft.alpha);
+                ctx.fillStyle = '#ef4444';
+                ctx.shadowColor = '#000000';
+                ctx.shadowBlur = 4;
+                ctx.font = 'bold 15px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(ft.text, ft.x, ft.y);
+                ctx.restore();
+            });
+
+            ctx.restore();
+        }
+
+        // Hauptschleife
+        function gameLoop() {
+            update();
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        window.onload = () => {
+            gameLoop();
+        };
+    </script>
+</body>
+</html>
